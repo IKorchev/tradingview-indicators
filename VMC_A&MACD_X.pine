@@ -1,0 +1,483 @@
+//@version=4
+// Inspired by  VUMANCHU Cipher A and MACD-X more than MACD by DGDTRD
+study(title="MA Indicator [Aven7us]", shorttitle="MA indicator [Aven7us]", overlay=true)
+
+
+// FUNCTIONS {
+
+// WaveTrend
+f_wavetrend(_src, _chlen, _avg, _malen) =>
+    _esa = ema(_src, _chlen)
+    _de = ema(abs(_src - _esa), _chlen)
+    _ci = (_src - _esa) / (0.015 * _de)
+    _tci = ema(_ci, _avg)
+    _wt1 = _tci
+    _wt2 = sma(_wt1, _malen)
+    [_wt1, _wt2]
+
+// 8 EMA Ribbon
+f_emaRibbon(_src, _e1, _e2, _e3, _e4, _e5, _e6, _e7, _e8, _e9) =>
+    _ema1 = ema(_src, _e1)
+    _ema2 = ema(_src, _e2)
+    _ema3 = ema(_src, _e3)
+    _ema4 = ema(_src, _e4)
+    _ema5 = ema(_src, _e5)
+    _ema6 = ema(_src, _e6)
+    _ema7 = ema(_src, _e7)
+    _ema8 = ema(_src, _e8)
+    _ema9 = ema(_src, _e9)
+    [_ema1, _ema2, _ema3, _ema4, _ema5, _ema6, _ema7, _ema8, _ema9]
+    
+f_rsimfi(_period, _multiplier, _tf) => security(syminfo.tickerid, _tf, sma(((close - open) / (high - low)) * _multiplier, _period))
+ 
+// } FUNCTIONS  
+
+
+// PARAMETERS {
+
+// WaveTrend
+wtChannelLen = input(9, title = 'WT Channel Length')
+wtAverageLen = input(13, title = 'WT Average Length')
+wtMASource = input(hlc3, title = 'WT MA Source')
+wtMALen = input(3, title = 'WT MA Length')
+
+// WaveTrend Overbought & Oversold lines
+obLevel = input(53, title = 'WT Overbought Level 1')
+obLevel2 = input(60, title = 'WT Overbought Level 2')
+obLevel3 = input(100, title = 'WT Overbought Level 3')
+osLevel = input(-53, title = 'WT Oversold Level 1')
+osLevel2 = input(-60, title = 'WT Oversold Level 2')
+osLevel3 = input(-80, title = 'WT Oversold Level 3')
+
+// EMA Ribbon
+ema1Len = input(21, title = "EMA 1 Length")
+ema2Len = input(24, title = "EMA 2 Length")
+ema3Len = input(28, title = "EMA 3 Length")
+ema4Len = input(34, title = "EMA 4 Length")
+ema5Len = input(50, title = "EMA 5 Length")
+ema6Len = input(64, title = "EMA 6 Length")
+ema7Len = input(88, title = "EMA 7 Length")
+ema8Len = input(100, title = "EMA 8 Length")
+ema9Len = input(200, title = "SLOW EMA")
+// RSI
+rsiSRC = input(close, title = "RSI Source")
+rsiLen = input(14, title = "RSI Length")
+rsiOversold = input(50, title = 'RSI Oversold', minval = 50, maxval = 100)
+rsiOverbought = input(50, title = 'RSI Overbought', minval = 0, maxval = 50)
+
+// RSI+MFI
+rsiMFIShow = input(true, title = "Show RSI+MFI")
+rsiMFIperiod = input(60, title = 'RSI+MFI Period')
+rsiMFIMultiplier = input(150, title = 'RSI+MFI Area multiplier')
+lengthStoch = input(14, "Stochastic Length", minval=1)
+smoothK = input(3, "K", minval=1)
+smoothD = input(3, "D", minval=1)
+// }
+rsi = rsi(rsiSRC, rsiLen)
+
+// STOCH RSI
+
+k = sma(stoch(rsi, rsi, rsi, lengthStoch), smoothK)
+d = sma(k, smoothD)
+
+
+// CALCULATE INDICATORS {
+
+// EMA Ribbon
+[ema1, ema2, ema3, ema4, ema5, ema6, ema7, ema8, ema9] = f_emaRibbon(close, ema1Len, ema2Len, ema3Len, ema4Len, ema5Len, ema6Len, ema7Len, ema8Len, ema9Len)
+
+
+// Calculates WaveTrend
+[wt1, wt2] = f_wavetrend(wtMASource, wtChannelLen, wtAverageLen, wtMALen)
+
+// WaveTrend Conditions
+wtOverSold = wt2 <= osLevel2
+wtOverBought = wt2 >= obLevel2
+wtCross = cross(wt1, wt2)
+wtCrossUp = wt2 - wt1 <= 0
+wtCrossDown = wt2 - wt1 >= 0
+uptrend = ema1 > ema8
+downtrend = ema8 > ema1
+
+stochHigh = k > 80 and d > 80
+stochLow = k < 20 and d < 20
+rsiOB = stochHigh and rsi > rsiOverbought
+rsiOS = stochLow and rsi > rsiOversold
+
+
+// RSI + MFI
+rsiMFI = f_rsimfi(rsiMFIperiod, rsiMFIMultiplier, timeframe.period)
+
+// Signals
+longEma = crossover(ema1, ema8) and uptrend
+redCross = crossunder(ema1, ema2)
+redDiamond = wtCross and wtCrossDown
+bloodDiamond = redDiamond and redCross
+shortEma = crossover(ema8, ema1) and downtrend
+bullCandle = uptrend and low < ema6 and close > ema8 and close > open
+bearCandle = downtrend and high > ema8 and close < ema8 and close > ema1 and low > ema1 and close < ema8
+
+// } CALCULATE INDICATORS
+[macdLine, signalLine, _] = macd(close, 12, 26, 9)
+macdLongCross = crossunder(signalLine, macdLine)
+macdShortCross = crossover(signalLine, macdLine)
+barcolor(color=bearCandle ? color.yellow : bullCandle ? #00FFA2 : na)
+
+
+// DRAW {
+
+// EMA Ribbon
+ribbonDir = ema8 < ema1
+colorEma = ribbonDir ? color.rgb( 0,255, 0, 90) : color.rgb(255, 0, 0, 90)
+p1 = plot(ema1, color=colorEma, linewidth=1,  title="EMA 1")
+plot(ema2, color=colorEma, linewidth=1, title="EMA 2")
+plot(ema3, color=colorEma, linewidth=1, title="EMA 3")
+plot(ema4, color=colorEma, linewidth=1,title="EMA 4")
+plot(ema5, color=colorEma, linewidth=1,title="EMA 5")
+plot(ema6, color=colorEma, linewidth=1, title="EMA 6")
+plot(ema7, color=colorEma, linewidth=1, title="EMA 7")
+plot(ema8, color=colorEma, linewidth=1, title="EMA 8")
+p8 = plot(ema8, color=colorEma, linewidth=1, title="EMA 8")
+plot(ema9, color=colorEma, linewidth=4, title="EMA 9 (SLOWEST)")
+fill(p1, p8, color = colorEma)
+// SHAPES
+plotshape(longEma, style=shape.triangleup, color=color.rgb(0, 255, 0, 0), location=location.belowbar, size=size.tiny, title="Long EMA Signal")
+plotshape(shortEma, style=shape.triangledown, color=color.rgb(255, 0, 0, 0), location=location.abovebar, size=size.tiny, title="Short EMA Signal")
+plotshape(redCross, style=shape.xcross, color=color.rgb(255, 0, 0, 0), location=location.abovebar, size=size.tiny, title="Red cross")
+// plotshape(redDiamond, style=shape.diamond, color=color.rgb(255, 0, 0, 0), location=location.abovebar, size=size.tiny, title="Red Diamond", transp=25)
+plotshape(bloodDiamond, style=shape.diamond, color=color.rgb(0, 0, 255, 0), location=location.abovebar, size=size.tiny, title="Blood Diamond")
+plotshape(macdLongCross, style=shape.diamond, color=color.rgb(0, 255, 0, 0), location=location.belowbar, size=size.tiny, title="Bullish MACD cross")
+plotshape(macdShortCross, style=shape.diamond, color=color.rgb(255, 0, 0, 0), location=location.abovebar, size=size.tiny, title="Bearish MACD cross")
+plotchar(rsiOB, char="_", color=color.rgb(255, 0, 0, 0), location=location.bottom, size=size.tiny, title="RSI overbought indication")
+plotchar(rsiOS, char="_", color=color.rgb(0, 255, 0, 0), location=location.bottom, size=size.tiny, title="RSI Oversold indication")
+// } DRAW
+
+
+//2nd
+
+
+macdType      = input("MACD-SOURCE", "MACD Calculation Method", 
+                         options=["MACD-TRADITIONAL", 
+                                  "MACD-HISTOGRAM",
+                                  "MACD-LEADER", 
+                                  "MACD-SOURCE",
+                                  "MACD-TRIX"])
+
+sourceType    = input("Current Price (close)", "Source", 
+                         options=["Current Price (close)", 
+                                  "Average of High, Low, and Close Price (hlc3)", 
+                                  "On Balance Volume (obv)", 
+                                  "Accumulation Distribution (accdist)", 
+                                  "Price Volume Trend (pvt)"])
+
+fast_length   = input(12,    "Fast Length", type=input.integer)
+slow_length   = input(26,    "Slow Length", type=input.integer)
+signal_length = input(9 ,    "Signal Smoothing", type=input.integer, minval = 1, maxval = 50)
+
+dummy_1       = input(false, "═══════ ═════ ═══   Options   ═══ ═════ ═══════")
+
+exponential   = input(true , "Use Exponential Moving Average")
+macdTrdDisp   = input(false, "Add Traditional MACD (MACD-X will be auto Highlighted)")
+var highlight = input(false, "Highlight MACD-X/Signal-X Area")
+dispLabel     = input(false, "Display Label")
+histLabel     = input(0,     "  Historical Label Readings", minval=0)
+
+dummy_2       = input(false, "═══════ ═════ ═══   Add-Ons   ═══ ═════ ═══════")
+
+dispSqueeze   = input(false, "► Display Squeeze Indicator Add-On ═════")
+bbkcLength    = input(20,    "  SQZ : Bollinger Bands/Keltner's Channel Length", minval = 1)
+bbMult        = input(2,     "  SQZ : Bollinger Bands MultFactor"  , type=input.float, step=0.25)
+kcMult        = input(1.25,  "  SQZ : Keltner's Channel MultFactor", type=input.float, step=0.25)
+
+colorRsi      = input(false, "► Change MACD Color when RSI Over[Bouht/Sold] Add-On ═════")
+rsiLength     = input(14,    "  RSI : Length")
+rsiOverBought = input(70,    "  RSI : Overbought Threshold", minval = 51, maxval = 99)
+rsiOverSold   = input(30,    "  RSI : Oversold Threshold"  , minval = 1 , maxval = 49)
+
+hstThesh      = input(false, "► Display Histogram Threshold Bands Add-On ═════")
+stDevL        = input(1.75,  "  Threshold Bands: Lower Deviation" , type=input.float, minval = 0, step = .25, maxval = 5)
+stDevH        = input(2.25,  "  Threshold Bands: Higher Deviation", type=input.float, minval = 0, step = .25, maxval = 5)
+
+vbcb          = input(true,  "► Volume Based Colored Bars Add-On ═════")
+vwcbLen       = input(21,    "  VWCB : Volume MA Length", minval=1)
+vwcbUpper     = input(1.618, "  VWCB : Upper Theshold", minval = 0.1, step = .1)
+vwcbLower     = input(.618,  "  VWCB : Lower Theshold", minval = 0.1, step = .1)
+
+isBackTest = input(true ,       "Backtest On/Off"                                                  , group = "Backtest Framework")
+
+//isBackTest    = input(true,  "═══════ ═ Backtest On/Off ═ ═══════")
+
+// Functions ════════════════════════════════════════════════════════════════════════════════════ //
+ma(s,l) => exponential ? ema(s,l) : sma(s,l)
+
+//------------------------------------------------------------------------------
+// Source Selection
+
+source = sourceType == "Current Price (close)" ? close : 
+     sourceType == "Average of High, Low, and Close Price (hlc3)" ? hlc3 : 
+     nz(volume) and sourceType == "On Balance Volume (obv)" ? obv : 
+     nz(volume) and sourceType == "Accumulation Distribution (accdist)" ? accdist : 
+     nz(volume) and sourceType == "Price Volume Trend (pvt)" ? pvt : na
+
+//------------------------------------------------------------------------------
+// MACD Calculations (macd, signal, histogram)
+
+fast_ma = ma(source, fast_length)
+slow_ma = ma(source, slow_length)
+
+macd  = fast_ma - slow_ma
+
+macdx = if macdType == "MACD-TRADITIONAL"
+    macd
+else if macdType == "MACD-HISTOGRAM"
+    macd - ma(macd, signal_length)
+else if macdType == "MACD-LEADER"
+    macd + ma(source - fast_ma, fast_length) - ma(source - slow_ma, slow_length)
+else if macdType == "MACD-SOURCE"
+    ma(source - avg(fast_ma, slow_ma), signal_length)
+else if macdType == "MACD-TRIX"
+    10000 * change(ema(ema(ema(log(source), signal_length * 2), signal_length * 2), signal_length * 2))
+
+signal  = ma(macd , signal_length)
+signalx = ma(macdx, signal_length)
+histx   = macdx - signalx
+
+//------------------------------------------------------------------------------
+// Highlight
+
+highlight := macdTrdDisp ? true : highlight
+
+//------------------------------------------------------------------------------
+// RSI Calculation
+
+rsiValue = colorRsi ? rsi(source, rsiLength) : na
+
+//------------------------------------------------------------------------------
+// TTM Squeeze Indicator Calculation
+
+var bool inSqz = na, var bool noSqz = na, var bool unSqz = na
+if dispSqueeze
+    [_, bbUpper, bbLower] = bb(close, bbkcLength, bbMult)
+    [_, kcUpper, kcLower] = kc(close, bbkcLength, kcMult, true)
+
+    inSqz  := (bbLower > kcLower) and (bbUpper < kcUpper)
+    noSqz  := (bbLower < kcLower) and (bbUpper > kcUpper)
+    unSqz  := (inSqz == false) and (noSqz == false)
+
+//------------------------------------------------------------------------------
+// Theshold Bands Calculation with BB build-in function 
+
+[_, upperL, lowerL] = if hstThesh
+    bb(histx, 233, stDevL)
+[_, upperH, lowerH] = if hstThesh
+    bb(histx, 233, stDevH)
+
+//------------------------------------------------------------------------------
+// Volume Based Colored Bars by KIVANÇ ÖZBİLGİÇ
+mean = sma(volume, vwcbLen)
+
+[vbcbColor, vbcbTxt] = if close < open
+    if volume > mean * vwcbUpper
+        [#910000, "High Volume"]
+    else if volume >= mean * vwcbLower and volume <= mean * vwcbUpper
+        [color.red, "Average Volume"] 
+    else 
+        [color.orange, "Low Volume"]
+else
+    if volume > mean * vwcbUpper
+        [#006400, "High Volume"]
+    else if volume >= mean * vwcbLower and volume <= mean * vwcbUpper
+        [color.green, "Average Volume"] 
+    else 
+        [#7FFFD4, "Low Volume"]
+
+
+// -Color ═══════════════════════════════════════════════════════════════════════════════════════ //
+
+histColor = histx >=0 ? 
+     (histx[1] < histx ? #006400 : color.green) : 
+     (histx[1] < histx ? color.red : #910000)
+
+// -Label ═══════════════════════════════════════════════════════════════════════════════════════ //
+//------------------------------------------------------------------------------
+// Label Text
+
+status   = histLabel > 0 ? "\n\nHistorical Bar Readings - " + tostring(histLabel) + " bar(s) earlier" : "\n\nCurrent Bar Readings"
+
+msCross  = bar_index - valuewhen(cross(macdx, signalx), bar_index, 0)
+macdMom  = change(histx) <= 0 ? "Falling - Last Signal Cross "  : "Growing - Last Signal Cross "
+
+macdText = "Method : " + macdType + ", Source : " + sourceType + status + "\nMACD : " + macdMom + tostring(msCross) + " bar(s)"
+rsiText  = colorRsi ? rsiValue > rsiOverBought ? "\nRSI : Value " + tostring(round(rsiValue)) + " - in OverBought Zone" : rsiValue < rsiOverSold ? "\nRSI : Value " + tostring(round(rsiValue)) + " - in OverSold Zone" : "\nRSI : Value " + tostring(round(rsiValue)) : na
+sqzText  = dispSqueeze ? inSqz or unSqz ? "\nSQZ : No Trade Recommended" : histx >= 0 ? "\nSQZ : Buy Probability (macd > signal)" : "\nSQZ : Sell Probability (macd < signal)" : na
+vbcbText = nz(volume) and vbcb ? "\nVolume : " + vbcbTxt + " (" + tostring(round(volume)) + ")" : na
+
+//------------------------------------------------------------------------------
+
+// Alert : macdx and signalx crosses
+alarm = cross(macdx, signalx)
+
+longAlertCondition  = crossover(macdx, signalx)
+shortAlertCondition = crossunder(macdx, signalx)
+
+
+dasCapital = input(1000.,       "Initial Capital"                                 , inline = "BT1" , group = "Backtest Framework")
+lenBckTst  = input(1,           "Period (Year)", minval=0, step = .1              , inline = "BT1" , group = "Backtest Framework")
+isStopLoss = input(false,       "Apply Stop Loss, with Stop Loss Set To %"        , inline = "BT2" , group = "Backtest Framework")
+stopLoss   = input(1.,          "", step=.1, minval = 0                           , inline = "BT2" , group = "Backtest Framework") / 100
+isBull     = input(false,       "Long : Candle Direction as Confirmation : Short" , inline = "BT3" , group = "Backtest Framework")
+isBear     = input(false,       ""                                                , inline = "BT3" , group = "Backtest Framework")
+isSudden   = input(true,        "Avoid Sudden Price Changes"                                       , group = "Backtest Framework")
+isTest     = input(false,       "❗❗❗ Simulate Trade on Next Bar : Only For Test Purpose (REPAINTS)", group = "Backtest Framework")
+lblInOutSL = input(true,        "Trade Entry/Exit Labels  Trade Statistics Label" , inline = "BT4" , group = "Backtest Framework")
+lblTrdStat = input(true,        ""                                                , inline = "BT4" , group = "Backtest Framework")
+
+startBckTst  = time > timenow - lenBckTst * 31556952000 
+
+var inTrade  = false
+
+if isBackTest
+
+    var capital       = dasCapital
+    var entryPrice    = 0. 
+    var exitPrice     = 0. 
+    var trades        = 0
+    var win           = 0
+    var loss          = 0
+
+    bullCandle        := close > open
+    bearCandle        := close < open
+    stopLossTrigger   = crossunder(close, entryPrice * (1 - stopLoss))
+    
+    longCondition     = isTest ?
+                          isBull ? 
+                             isSudden ? 
+                               longAlertCondition [1] and not shortAlertCondition    and bullCandle    : 
+                               longAlertCondition [1] and bullCandle                                   : 
+                             isSudden ? 
+                               longAlertCondition [1] and not shortAlertCondition                      : 
+                               longAlertCondition [1]                                                  :
+                          isBull ? 
+                             isSudden ? 
+                               longAlertCondition [2] and not shortAlertCondition[1] and bullCandle[1] : 
+                               longAlertCondition [2] and bullCandle[1]                                : 
+                             isSudden ? 
+                               longAlertCondition [2] and not shortAlertCondition[1]                   : 
+                               longAlertCondition [1]
+
+    shortCondition    = isTest ?
+                          isBear ? 
+                             isSudden ? 
+                               shortAlertCondition[1] and not longAlertCondition     and bearCandle    : 
+                               shortAlertCondition[1] and bearCandle                                   : 
+                             isSudden ? 
+                               shortAlertCondition[1] and not longAlertCondition                       : 
+                               shortAlertCondition[1]                                                  :
+                          isBear ? 
+                             isSudden ? 
+                               shortAlertCondition[2] and not longAlertCondition [1] and bearCandle[1] : 
+                               shortAlertCondition[2] and bearCandle[1]                                : 
+                             isSudden ? 
+                               shortAlertCondition[2] and not longAlertCondition [1]                   : 
+                               shortAlertCondition[1]
+    
+    stopLossCondition = isStopLoss ? inTrade and not shortCondition ? stopLossTrigger : 0 : 0
+
+    if startBckTst and longCondition and not inTrade
+        entryPrice   := open
+        inTrade      := true
+        trades       := trades + 1
+    
+        if lblInOutSL
+            label longLabel = label.new(bar_index, signalx, text="L"
+             ,tooltip="entry price  : " + tostring(entryPrice) + "\nentry value : " + tostring(capital, "#.##")
+             ,color=color.green, style=label.style_label_up, textcolor=color.white, textalign=text.align_center, size=size.tiny, yloc=yloc.belowbar)
+        
+        alert("long : probable trading opportunity, price " + tostring(close), alert.freq_once_per_bar)
+
+    if (shortCondition or stopLossCondition) and inTrade
+        exitPrice    := stopLossCondition ? close : open
+        inTrade      := false
+        capital      := capital * (exitPrice / entryPrice)
+
+        if exitPrice > entryPrice
+            win      := win  + 1
+        else
+            loss     := loss + 1
+    
+        if lblInOutSL
+            text = stopLossCondition ? "SL" : "S"
+            label shortLabel = label.new(bar_index, signalx, text = text
+                 ,tooltip="change .......... : " + tostring((exitPrice / entryPrice - 1) * 100, "#.##") + "%\nentry/exit price : " + tostring(entryPrice) + " / " + tostring(exitPrice) + "\nnew capital ..... : " + tostring(capital, "#.##")
+                 ,color=color.red, style=label.style_label_down, textcolor=color.white, textalign=text.align_center, size=size.tiny, yloc=yloc.abovebar)
+        
+        alert("short : probable trading opportunity, price " + tostring(close), alert.freq_once_per_bar)
+
+    var label wLabel = na
+    
+    if not inTrade and longAlertCondition[1] and not shortAlertCondition
+        wLabel := label.new(bar_index, signalx, text="⚠️"
+         ,tooltip="probable long trading opportunity \nawaiting confirmation (next candle)\nif confirmed, backtest tool will execute trade with open price of the canlde"
+         ,color=color.green, style=label.style_none, textcolor=color.white, textalign=text.align_center, size=size.huge, yloc=yloc.abovebar)
+        label.delete(wLabel[1])
+        
+        alert("long : early warning : probable trading opportunity, awaiting confirmation (next candle), price " + tostring(close), alert.freq_once_per_bar)
+
+    if inTrade and shortAlertCondition[1] and not longAlertCondition
+        wLabel := label.new(bar_index, signalx, text="⚠️"
+         ,tooltip="probable short/take profit trading opportunity \nawaiting confirmation (next candle)\nif confirmed, backtest tool will execute trade with open price of the canlde"
+         ,color=color.green, style=label.style_none, textcolor=color.white, textalign=text.align_center, size=size.huge, yloc=yloc.abovebar)
+        label.delete(wLabel[1])
+        
+        alert("short : early warning : probable trading opportunity, awaiting confirmation (next candle), price " + tostring(close), alert.freq_once_per_bar)
+
+    if change(time)
+        label.delete(wLabel[1])
+        
+    if stopLossCondition
+        alert("stop loss condition, price " + tostring(close), alert.freq_once_per_bar)
+    
+    if lblTrdStat
+        var years         = (timenow - time) / 31556952000
+
+        var yearsTxt      = ""
+        var remarks       = ""
+
+        if years < lenBckTst
+            lenBckTst    := years
+            yearsTxt     := tostring(lenBckTst, "#.##") + " Years***"
+            remarks      := "\n\n*longs only\n**final value, if trade active displays estimated final value\n***max available data for selected timeframe : # of bars - " + tostring(bar_index)
+        else
+            yearsTxt     := tostring(lenBckTst, "#.##") + " Year(s)"
+            remarks      := "\n\n*longs only\n**final value - if in trade, displays estimated final value"
+
+        inTradeTxt        = inTrade ? "inTrade" : "not inTrade"
+        estimated         = inTrade ? capital * (close / entryPrice) : capital
+        entryTxt          = inTrade ? tostring(entryPrice) : "not inTrade"
+        lastTrdTxt        = inTrade ? ", Gain/Loss " + tostring((estimated/capital - 1) * 100, "#.##") + "%, Stop Loss " + tostring(isStopLoss ? entryPrice * (1 - stopLoss) : na) : ""
+        stopLossTxt       = isStopLoss ? "if last value falls by " + tostring(stopLoss * 100) + "% of entry price" : "not applied"
+
+        tooltipTxt        = "entires/exits are calculated based on macdx and signalx crosses\n" +
+                             "-long entry , when macdx crosses above signal line\n" +
+                             "-take profit, when macdx crosses below signal line\n" +
+                             "-stop loss " + stopLossTxt + remarks
+
+        label indiLabel   = label.new(time, signalx 
+             ,text="Trade Statistics*, Trade Period - " + yearsTxt +
+              "\nMethod/Source : " + macdType + " / " + sourceType +
+              "\n═════════════════════════════════════" +
+              "\nSuccess Ratio ...... : " + tostring((win/trades)*100, "#") + "%" + ", # of Trades - " + tostring(trades) + ", Win/Loss - " + tostring(win) + "/" + tostring(loss) +
+              "\nGain/Loss % ........ : " + tostring((estimated/dasCapital - 1) * 100, "#") + "%" + ", Initial/Final Value** - " + tostring(dasCapital) + " / " + tostring(estimated, "#") +
+              "\n\nCurrent TradeStatus - " + inTradeTxt + lastTrdTxt +
+              "\n═════════════════════════════════════" +
+              "\nEntry Price/Value . : " + entryTxt + " / " + tostring(capital, "#.##") + " " + inTradeTxt +
+              "\nLast Price/Value ... : " + tostring(close) + " / " + tostring(estimated , "#.##") + " " + inTradeTxt
+             ,tooltip=tooltipTxt
+             ,color=inTrade ? estimated/dasCapital > 1 ? color.teal : color.maroon : color.black, xloc=xloc.bar_time, style=label.style_label_left, textcolor=color.white, textalign=text.align_left)
+
+        label.set_x(indiLabel, label.get_x(indiLabel) + round(change(time)*70))
+        label.set_y(indiLabel, hl2* 1.1)
+        label.delete(indiLabel[1])
+
+bgcolor(isBackTest and startBckTst ? startBckTst != startBckTst[1] ? color.blue : inTrade ? color.rgb(0, 255, 0, 97) : color.rgb(255, 0, 0, 97) : na)
+
